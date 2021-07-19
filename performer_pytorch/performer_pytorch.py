@@ -432,13 +432,18 @@ class Performer(nn.Module):
         return self.net(x, **kwargs)
 
 class PerformerLM(nn.Module):
-    def __init__(self, *, num_tokens, max_seq_len, dim, depth, heads, local_attn_heads = 0,type_vocab_size=2, local_window_size = 256, causal = False, ff_mult = 4, nb_features = None, feature_redraw_interval = 1000, reversible = False, ff_chunks = 1, ff_glu = False, emb_dropout = 0., ff_dropout = 0., attn_dropout = 0., generalized_attention = False, kernel_fn = nn.ReLU(), qr_uniform_q = False, use_scalenorm = False, use_rezero = False, cross_attend = False, no_projection = False, tie_embed = False, fixed_position_emb = False, axial_position_emb = False, axial_position_shape = None, auto_check_redraw = True):
+    def __init__(self, *, num_tokens, max_seq_len, dim, depth, heads, local_attn_heads = 0,type_vocab_size=2,type_plus_size=2, local_window_size = 256, causal = False, ff_mult = 4, nb_features = None, feature_redraw_interval = 1000, reversible = False, ff_chunks = 1, ff_glu = False, emb_dropout = 0., ff_dropout = 0., attn_dropout = 0., generalized_attention = False, kernel_fn = nn.ReLU(), qr_uniform_q = False, use_scalenorm = False, use_rezero = False, cross_attend = False, no_projection = False, tie_embed = False, fixed_position_emb = False, axial_position_emb = False, axial_position_shape = None, auto_check_redraw = True):
         super().__init__()
         local_attn_heads = cast_tuple(local_attn_heads)
 
         self.max_seq_len = max_seq_len
         self.token_emb = nn.Embedding(num_tokens, dim)
         self.token_type_embeddings = nn.Embedding(type_vocab_size, config.hidden_size)
+        
+        self.token_type_embeddings = nn.Embedding(type_vocab_size, config.hidden_size)
+        self.type_plus_embeddings = nn.Embedding(type_plus_size, config.hidden_size)
+        
+        
 
         if fixed_position_emb:
             self.pos_emb = FixedPositionalEmbedding(dim, max_seq_len)
@@ -460,7 +465,7 @@ class PerformerLM(nn.Module):
     def fix_projection_matrices_(self):
         self.performer.fix_projection_matrices_()
 
-    def forward(self, x, token_type_ids=None,return_encodings = False, **kwargs):
+    def forward(self, x, token_type_ids=None,type_plus_ids=None,return_encodings = False, **kwargs):
         b, n, device = *x.shape, x.device
         assert n <= self.max_seq_len, f'sequence length {n} must be less than the max sequence length {self.max_seq_len}'
 
@@ -469,6 +474,8 @@ class PerformerLM(nn.Module):
         x += self.pos_emb(x)
         if token_type_ids:
             x += self.token_type_embeddings(x)
+        if self.type_plus_ids:
+            x += self.token_plus_embeddings(x)
         x = self.dropout(x)
 
         # performer layers
